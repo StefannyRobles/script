@@ -1,0 +1,344 @@
+---
+title: "pc4_2/3"
+format: html
+editor: visual
+---
+
+## Instalar y cargar los paquetes
+
+```{r}
+install.packages("mice")
+install.packages("ggmice")
+install.packages("gtsummary")
+install.packages("rio")
+install.packages("here")
+```
+
+```{r}
+library(mice)
+library(tidyverse)
+library(here)
+library(rio)
+library(ggmice)
+library(gtsummary)
+```
+
+## Importar la base de datos
+
+```{r}
+df <- import("bac_aguda.csv")
+```
+
+```{r}
+head(df)
+```
+
+## Corregir variable dependiente (binaria)
+
+```{r}
+df$meningitis_bacteriana_aguda <- case_when(
+  df$meningitis_bacteriana_aguda == "Presente" ~ 1,
+  df$meningitis_bacteriana_aguda == "Ausente" ~ 0,
+  TRUE ~ NA_real_
+)
+```
+
+## Convertir variables categóricas a factor
+
+```{r}
+df$raza <- as.factor(df$raza)
+df$sexo <- as.factor(df$sexo)
+df$mes <- as.factor(df$mes)
+df$conjunto <- as.factor(df$conjunto)
+```
+
+```{r}
+colSums(is.na(df))
+```
+
+```{r}
+df %>%
+  select(
+    edad,
+    sexo,
+    raza,
+    glucosa_sangre,
+    hematies_lcr,
+    proteina_lcr,
+    tinción_gram,
+    cultivo_lcr,
+    meningitis_bacteriana_aguda
+  ) %>%
+  ggmice::plot_pattern(square = TRUE, rotate = TRUE)
+```
+
+## Seleccionar variables a imputar
+
+```{r}
+df_imp <- df %>% select(numero_caso, conjunto, año, raza, hematies_lcr, meningitis_bacteriana_aguda)
+```
+
+```{r}
+tabla_glucosa <- df %>%
+  select(
+    edad,
+    sexo,
+    raza,
+    glucosa_sangre,
+    hematies_lcr,
+    proteina_lcr,
+    meningitis_bacteriana_aguda
+  ) %>%
+  mutate(missing = factor(
+    is.na(glucosa_sangre),
+    levels = c(FALSE, TRUE),
+    labels = c("Sin valores perdidos", "Con valores perdidos")
+  )) %>%
+  tbl_summary(
+    by = missing,
+    statistic = list(
+      all_continuous()  ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)")
+  ) %>%
+  modify_header(label = "**Variable**",
+                all_stat_cols() ~ "**{level}**<br>N = {n} ({style_percent(p, digits=1)}%)") %>%
+  modify_caption("Características según si falta glucosa_sangre") %>%
+  bold_labels()
+
+tabla_hematies <- df %>%
+  select(
+    edad,
+    sexo,
+    raza,
+    glucosa_sangre,
+    hematies_lcr,
+    proteina_lcr,
+    meningitis_bacteriana_aguda
+  ) %>%
+  mutate(missing = factor(
+    is.na(hematies_lcr),
+    levels = c(FALSE, TRUE),
+    labels = c("Sin valores perdidos", "Con valores perdidos")
+  )) %>%
+  tbl_summary(
+    by = missing,
+    statistic = list(
+      all_continuous()  ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)")
+  ) %>%
+  modify_header(label = "**Variable**",
+                all_stat_cols() ~ "**{level}**<br>N = {n} ({style_percent(p, digits=1)}%)") %>%
+  modify_caption("Características según si falta hematies_lcr") %>%
+  bold_labels()
+
+tabla <- tbl_merge(
+  tbls = list(tabla_glucosa, tabla_hematies),
+  tab_spanner = c("**Glucosa sangre**", "**Hematies LCR**")
+)
+```
+
+```{r}
+tabla
+```
+
+```{r}
+input_data <- df %>%
+  dplyr::select(
+    edad,
+    sexo,
+    raza,
+    glucosa_sangre,
+    proteina_lcr,
+    hematies_lcr,
+    meningitis_bacteriana_aguda
+  ) %>%
+  mutate(meningitis_bacteriana_aguda = as.factor(meningitis_bacteriana_aguda))
+```
+
+```{r}
+names(input_data)
+```
+
+## 
+
+```{r}
+input_data <- df %>%
+  select(
+    edad,
+    sexo,
+    raza,
+    glucosa_sangre,
+    proteina_lcr,
+    hematies_lcr,
+    meningitis_bacteriana_aguda
+  ) %>%
+  mutate(meningitis_bacteriana_aguda = as.factor(meningitis_bacteriana_aguda))
+```
+
+```{r}
+input_data
+```
+
+```{r}
+library(mice)
+
+# Usar solo algunas columnas para imputar
+input_data <- df %>%
+  select(
+    edad,
+    sexo,
+    raza,
+    glucosa_sangre,
+    hematies_lcr,
+    meningitis_bacteriana_aguda
+  ) %>%
+  mutate(meningitis_bacteriana_aguda = as.factor(meningitis_bacteriana_aguda))
+
+# Corre imputación con métodos válidos
+data_imputada <- mice(
+  input_data,
+  m = 5,
+  method = c("pmm", "logreg", "logreg", "pmm", "pmm", ""),
+  seed = 123,
+  print = FALSE
+)
+```
+
+```{r}
+class(data_imputada)
+```
+
+```{r}
+long_data <- bind_rows(
+  lapply(1:5, function(i) {
+    complete(data_imputada, i) %>%
+      mutate(.imp = i)
+  })
+)
+```
+
+```{r}
+library(ggmice)
+library(ggplot2)
+
+ggmice(data_imputada, aes(x = .imp, y = glucosa_sangre)) +
+  geom_jitter(height = 0, width = 0.25) +
+  geom_boxplot(width = 0.5, size = 1, alpha = 0.55, outlier.shape = NA) +
+  labs(
+    x = "Número de imputación",
+    y = "Glucosa en sangre",
+    title = "Distribución de glucosa_sangre por imputación"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggmice(data_imputada, aes(x = .imp, y = hematies_lcr)) +
+  geom_jitter(height = 0, width = 0.25) +
+  geom_boxplot(width = 0.5, size = 1, alpha = 0.55, outlier.shape = NA) +
+  labs(
+    x = "Número de imputación",
+    y = "Hematies en LCR",
+    title = "Distribución de hematies_lcr por imputación"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+data_imputada_l <- complete(data_imputada, "long")
+```
+
+```{r}
+library(dplyr)
+
+# Crear variable 'imputed' con etiquetas (si no la tienes creada)
+data_imputada_l <- data_imputada_l %>% 
+  mutate(imputed = .imp > 0,
+         imputed = factor(imputed,
+                          levels = c(FALSE, TRUE),
+                          labels = c("Observado", "Imputado")))
+
+# Crear tabla cruzada entre meningitis_bacteriana_aguda e imputed
+tabla <- table(data_imputada_l$meningitis_bacteriana_aguda, data_imputada_l$imputed)
+
+# Calcular proporciones por columna
+prop <- prop.table(tabla, margin = 2)
+
+# Convertir a data frame para mejor visualización
+prop_df <- as.data.frame(prop)
+
+# Agregar columna con porcentaje redondeado
+prop_df$porcentaje <- round(prop_df$Freq * 100, 2)
+
+# Mostrar resultados
+print(prop_df)
+```
+
+```{r}
+data_imputada_l <- data_imputada_l %>%
+  mutate(imputed = .imp > 0,
+         imputed = factor(imputed,
+                          levels = c(FALSE, TRUE),
+                          labels = c("Observado", "Imputado")))
+
+# Tabla con proporciones (formato matriz)
+prop.table(table(data_imputada_l$meningitis_bacteriana_aguda,
+                 data_imputada_l$imputed),
+           margin = 2)
+```
+
+```{r}
+# Ver niveles de sexo
+table(data_imputada_l$sexo, useNA = "ifany")
+
+# Ver niveles de raza
+table(data_imputada_l$raza, useNA = "ifany")
+
+
+```
+
+```{r}
+data_imputada_l <- data_imputada_l %>%
+  mutate(
+    sexo = factor(sexo),
+    raza = factor(raza)
+  )
+```
+
+```{r}
+library(dplyr)
+library(gtsummary)
+
+# Verificar niveles de variables categóricas
+table(data_imputada_l$sexo, useNA = "ifany")
+table(data_imputada_l$raza, useNA = "ifany")
+
+# Convertir a factores solo si tienen más de un nivel
+data_imputada_l <- data_imputada_l %>%
+  mutate(
+    sexo = factor(sexo),
+    raza = factor(raza)
+  )
+
+# Ajustar modelo SOLO con variables numéricas confiables
+modelo <- glm(meningitis_bacteriana_aguda ~ edad + glucosa_sangre + hematies_lcr,
+              data = data_imputada_l,
+              family = binomial(link = "logit"))
+
+# Crear tabla bonita con gtsummary
+tabla_multi <- modelo %>%
+  tbl_regression(exponentiate = TRUE,
+                 label = list(
+                   edad ~ "Edad",
+                   glucosa_sangre ~ "Glucosa en sangre",
+                   hematies_lcr ~ "Hematíes en LCR")) %>%
+  bold_p(t = 0.05) %>%
+  modify_header(estimate = "**OR ajustado**", p.value = "**p valor** ")
+
+# Mostrar tabla
+tabla_multi
+```
+
+```{r}
+tabla_multi
+```
