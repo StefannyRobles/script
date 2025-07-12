@@ -1,0 +1,256 @@
+---
+title: "practica_01_03"
+format: html
+editor: visual
+---
+
+## Integrantes:
+
+Casas Ruiz Caro, Jhahandra Jimena
+
+Rojas Onton , Christian Adrian
+
+Ragas Asenjo, Sergio Henry
+
+Robles Sevillano, Stefanny Liliana
+
+Saico Achamizo, Karen Andrea
+
+# Paquetes para resumir datos
+
+Instalar paquetes
+
+```{r}
+#install.packages("gtsummary")
+#install.packages("finalfit")
+install.packages("flextable")
+```
+
+Cargar paquetes
+
+```{r}
+library(tidyverse)
+library(here)
+library(rio)
+library(gtsummary) ## Para la "Tabla 1"
+library(finalfit)
+library(flextable)
+```
+
+# Cargando los datos
+
+```{r}
+bac_aguda <- import(here("data", "bac_aguda.csv"))
+```
+
+### La "estructura" de los datos
+
+```{r}
+str(bac_aguda)
+```
+
+# 1. Resumen de variables categóricas
+
+```{r}
+table(bac_aguda$meningitis_bacteriana_aguda, useNA = "ifany")
+```
+
+```{r}
+table(bac_aguda$cultivo_sangre, useNA = "ifany")
+```
+
+Con tidyverse
+
+```{r}
+bac_aguda |> 
+  dplyr::count(cultivo_sangre, sort = TRUE)
+```
+
+Valores perdidos en proporciones
+
+```{r}
+prop.table(table(bac_aguda$cultivo_sangre, useNA = "ifany"))
+```
+
+Porcentaje
+
+```{r}
+round(prop.table(table(bac_aguda$cultivo_sangre, useNA = "ifany"))*100,1)
+```
+
+# 2. Resumen de variables continuas
+
+```{r}
+mean(bac_aguda$leucocitos_lcr, na.rm = TRUE)
+```
+
+```{r}
+sd(bac_aguda$leucocitos_lcr, na.rm = TRUE)
+```
+
+Otras funciones que puedes encontrar útil son `min()`, `max()`, `median()` y `IQR()`
+
+```{r}
+min(bac_aguda$leucocitos_lcr, na.rm = TRUE) # Proporciona el valor mínimo
+
+IQR(bac_aguda$leucocitos_lcr, na.rm = TRUE) # Calcula el rango intercuartilico
+
+median(bac_aguda$leucocitos_lcr, na.rm = TRUE) # Calcula la mediana
+```
+
+### La función `summary()` para calcular todas las medidas, a la vez.
+
+```{r}
+summary(bac_aguda$glucosa_sangre)
+```
+
+## ¿Mediana o media?
+
+```{r}
+mean(bac_aguda$leucocitos_lcr, na.rm = T)
+```
+
+```{r}
+median(bac_aguda$leucocitos_lcr, na.rm = T)
+```
+
+La media y mediana de la variable leucocitos_lcr son diferentes. Estos sugiere que los datos tienen una distribución asimétrica.
+
+Debajo otro ejemplo con la variable glucosa_sangre
+
+```{r}
+mean(bac_aguda$glucosa_sangre, na.rm = T)
+```
+
+```{r}
+median(bac_aguda$glucosa_sangre, na.rm = T)
+```
+
+Comprobémoslo visualmente
+
+```{r}
+par(mfrow=c(1,2)) # Configuramos e número de elementos por Figura
+hist(bac_aguda$leucocitos_lcr)
+hist(bac_aguda$glucosa_sangre)
+```
+
+# \[resumen\] Por otra variable
+
+```{r}
+bac_aguda |> 
+  group_by(tinción_gram) |> 
+  summarise(n_observ = n(),
+            porcentaje = (n_observ / nrow(bac_aguda)*100))
+```
+
+```{r}
+bac_aguda |>  
+  group_by(leucocitos_lcr) |> 
+  summarize(promedio = mean(glucosa_sangre, na.rm = T))
+```
+
+```{r}
+bac_aguda |>  
+  group_by(leucocitos_lcr, tinción_gram) |> 
+  summarize(promedio = mean(glucosa_sangre, na.rm = T))
+```
+
+otros estadisticos
+
+```{r}
+bac_aguda |>  
+  group_by(leucocitos_lcr, tinción_gram) |> 
+  summarize(cultivo_sangre= mean(glucosa_sangre, na.rm = TRUE),
+            DE = sd(glucosa_sangre, na.rm = TRUE),
+            hematies_lcr = max(glucosa_sangre, na.rm = TRUE))
+```
+
+Estadística descriptiva condicional: resumen por grupo de estado de diabetes
+
+```{r}
+bac_aguda |>  
+  group_by(tinción_gram) |> 
+  summarize(proteina_lcr = max(leucocitos_lcr[glucosa_sangre == "Si"], na.rm = TRUE),
+            células_banda_sangre_pct = max(leucocitos_lcr[glucosa_sangre == "No"], na.rm = TRUE),
+            neutrofilos_sangre_pct = mean(leucocitos_lcr[glucosa_sangre == "Si"], na.rm = TRUE),
+            monocitos_lcr_pct = mean(leucocitos_lcr[glucosa_sangre == "No"], na.rm = TRUE))
+```
+
+Percentiles
+
+```{r}
+bac_aguda |> 
+  filter(meningitis_bacteriana_aguda == "Presente") |> 
+  group_by(sexo) |> 
+  summarize(p25 = quantile(glucosa_lcr, probs = 0.25, na.rm=T),
+            p50 = quantile(glucosa_lcr, probs = 0.50, na.rm=T),
+            p75 = quantile(glucosa_lcr, probs = 0.75, na.rm=T))
+```
+
+Usando `across()` para multiples estadísticos descriptivos para multiples variables
+
+```{r}
+bac_aguda |> 
+  group_by(meningitis_bacteriana_aguda) |> 
+  summarize(across(.cols = c(glucosa_sangre, linfocitos_lcr_pct, 
+                             monocitos_lcr_pct, neutrofilos_sangre_pct, leucocitos_lcr),
+                   .fns = list("promedio" = mean, "DE" = sd, 
+                               "máximo" = max),
+                   na.rm = TRUE))
+```
+
+```{r}
+bac_aguda |> 
+  group_by(meningitis_bacteriana_aguda) |> 
+  summarize(across(.cols = where(is.numeric),
+                   .fns = list("promedio" = mean, "DE" = sd, 
+                               "máximo" = max),
+                   na.rm = TRUE))
+```
+
+# La "Tabla 1" con gtsummary
+
+```{r}
+install.packages("finalfit")
+install.packages("gtsummary")
+```
+
+```{r}
+library(gtsummary)
+```
+
+Tabla 1 básico
+
+```{r}
+bac_aguda |> 
+  select(edad, raza, sexo, mes, glucosa_sangre, 
+         leucocitos_lcr, células_banda_sangre_pct, neutrofilos_sangre_pct) |> 
+  tbl_summary()
+```
+
+```{r}
+bac_aguda |> 
+  select(edad, raza, sexo, mes, glucosa_sangre, 
+         leucocitos_lcr, células_banda_sangre_pct, neutrofilos_sangre_pct) |> 
+  tbl_summary(
+    by = neutrofilos_sangre_pct
+  )
+```
+
+Pero las tablas deben ser autoexplicativas...
+
+## Configurando el estilo e idioma
+
+```{r}
+theme_gtsummary_language(language = "es") # idioma es = español
+theme_gtsummary_journal(journal = "jama")
+```
+
+```{r}
+bac_aguda |> 
+  select(edad, raza, sexo, mes, glucosa_sangre, 
+         leucocitos_lcr, células_banda_sangre_pct, neutrofilos_sangre_pct) |> 
+  tbl_summary(
+    by = neutrofilos_sangre_pct
+  )
+```
